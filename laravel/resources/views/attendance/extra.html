@@ -1,0 +1,363 @@
+<x-app-layout>
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Record Attendance</title>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <style>
+    
+    .school-logo {
+        width: 100px; /* Adjust logo size */
+        height: auto; /* Maintain aspect ratio */
+        display: block;
+        margin: 0 auto; /* Center logo */
+        margin-bottom: 15px; /* Space between logo and school name */
+    }
+    
+    .swal-content h5 {
+        font-weight: bold; /* Make the school name bold */
+        margin-bottom: 10px; /* Space below the school name */
+    }
+    
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #3d3c3c;
+        background-size: cover;
+    }
+    
+    .container {
+        margin-top: 30px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+    }
+    
+    .card {
+        background-color: rgba(255, 255, 255, 0.9);
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        width: 100%;
+        max-width: 400px;
+    }
+    
+    .card-header {
+        background-color: #ffffff;
+        color: white;
+        position: relative;
+        padding: 10px 15px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+    }
+    
+    .card-header h5 {
+        margin: 0;
+    }
+    
+    .card-header .time {
+        position: absolute;
+        left: 15px;
+        margin-top: 41px;
+        transform: translateY(-50%);
+        font-size: 35px;
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 5px 10px;
+        border-radius: 5px;
+    }
+    
+    .form {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        background: #1e1e1e;
+        padding: 20px;
+        border: 1px solid #3d3c3c;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        font-size: 16px;
+    }
+    
+    .form input, .form select {
+        height: 45px;
+        outline: none;
+        border: 2px solid orange;
+        background: transparent;
+        padding: 10px;
+        border-radius: 5px;
+        transition: .5s;
+        color: white;
+        font-size: 16px;
+    }
+    
+    .form input:focus, .form select:focus {
+        background: orange;
+    }
+    
+    .form button {
+        width: 100%;
+        color: white;
+        transition: .5s;
+        font-size: 16px;
+        outline: none;
+        border: none;
+        height: 45px;
+        border-radius: 5px;
+        background: orange;
+    }
+    
+    .alert {
+        margin-top: 20px;
+        border-radius: 4px;
+    }
+    
+    .heading {
+        margin-bottom: 20px;
+    }
+    
+    .back-button {
+        display: inline-block;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+    
+    .back-button a {
+        text-decoration: none;
+        color: #007bff;
+        font-size: 16px;
+        transition: color 0.3s;
+    }
+    
+    .back-button a:hover {
+        color: #0056b3;
+    }
+    </style>
+    </head>
+    <body>
+    <div class="card-header">
+    <div class="time" id="current-time">Loading time...</div>
+    </div>
+    <div class="container">
+    <div class="card mb-4 shadow-sm">
+        <!-- Back Button -->
+        <div class="back-button">
+            <a href="{{ route('attendance.index') }}" class="btn btn-outline-primary">&larr; Back to Attendance List</a>
+        </div>
+    
+        <!-- Heading above the form -->
+        <div class="text-center heading">
+            <h3>Record Attendance</h3>
+        </div>
+    
+        <div class="card-body">
+            <form class="form" id="attendance_form" action="{{ route('attendance.store') }}" method="POST">
+                @csrf
+                <div class="form-group mb-3">
+                    <input type="text" id="rfid" name="student_rfid" readonly placeholder="Scan RFID card">
+                </div>
+    
+                <div class="form-group mb-3">
+                    <label for="event_select" class="form-label">Select Event:</label>
+                    <select id="event_select" name="event_id">
+                        <option value="">-- Select an Event --</option>
+                        @foreach($events as $event)
+                            @php
+                                $now = \Carbon\Carbon::now();
+                                $startDateTime = \Carbon\Carbon::parse($event->start_date . ' ' . ($event->starttime_am ?: $event->starttime_pm));
+                                $endDateTime = \Carbon\Carbon::parse($event->start_date . ' ' . ($event->endtime_pm ?: $event->endtime_am));
+                                $status = $now->lt($startDateTime) ? 'Upcoming' : ($now->between($startDateTime, $endDateTime) ? 'Ongoing' : 'Completed');
+                            @endphp
+                            @if($status === 'Ongoing')
+                                <option value="{{ $event->id }}" data-attendees="{{ $event->attendees_type }}">{{ $event->event_name }}</option>
+                            @endif
+                        @endforeach
+                    </select>
+                </div>
+    
+                <!-- Read-only field for attendees type -->
+                <div class="form-group mb-3">
+                    <label for="attendees_type" class="form-label">Attendees Type:</label>
+                    <input type="text" id="attendees_type" name="attendees_type" readonly>
+                </div>
+    
+            </form>
+        </div>
+    </div>
+    
+   
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+    // Update current time every second
+    function updateTime() {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString();
+        document.getElementById('current-time').innerText = `Current Time: ${timeString}`;
+    }
+    
+    setInterval(updateTime, 1000);
+    
+    // Fetch the RFID and submit attendance
+    function fetchRFID() {
+        axios.get('http://localhost:5000/card')
+            .then(function (response) {
+                console.log('RFID detected:', response.data.uid);
+                document.getElementById('rfid').value = response.data.uid;
+    
+                if (response.data.uid) {
+                    axios.post("{{ route('attendance.record') }}", {
+                        rfid: response.data.uid,
+                        event_id: document.getElementById('event_select').value
+                    })
+                    .then(function (response) {
+                        if (response.data.success) {
+                            // Capitalize first letter of the name
+                            const studentName = `${response.data.student.first_name} ${response.data.student.last_name}`;
+                            const capitalizedStudentName = studentName.charAt(0).toUpperCase() + studentName.slice(1).toLowerCase();
+    
+                            Swal.fire({
+        html: `
+            <div class="text-center">
+                <img src="{{ asset('assets/img/apple-touch-icon.png') }}" alt="School Logo" class="school-logo mb-3">
+                 <h5 style="font-weight: bold;">Franciscan College Of The Immaculate Conception</h5>
+                <img src="{{ asset('storage') }}/${response.data.student.picture}" alt="Student Picture" class="img-fluid student-picture mb-3" style="display: block; margin-left: auto; margin-right: auto;">
+                
+                <!-- Name Section -->
+                <div class="student-info-box mb-3">
+                    <span class="label" style="font-weight: bold;">Name:</span>
+                    <span class="value" style="margin-left: 10px; font-weight: bold;">${response.data.student.first_name.toUpperCase()} ${response.data.student.last_name.toUpperCase()}</span>
+                </div>
+    
+                <!-- Course & Year Section -->
+                <div class="student-info-box">
+                    <span class="label" style="font-weight: bold;">Course & Year:</span>
+                    <span class="value" style="margin-left: 10px; font-weight: bold;">${response.data.student.course_year.course_name} - ${response.data.student.course_year.year_level}</span>
+                </div>
+            </div>
+        `,
+        confirmButtonText: 'OK',
+        timer: 10000,
+        timerProgressBar: true,
+        background: '#87CEEB',  // Set the background color to sky blue
+        customClass: {
+            popup: 'swal-custom-popup'  // Optional: Add a custom class for further styling
+        },
+        didClose: () => {
+            refreshAttendanceList();
+        }
+    });
+    
+    
+            }
+        })
+        .catch(function (error) {
+            console.error('Error saving attendance:', error);
+            if (error.response && error.response.data && error.response.data.error) {
+                Swal.fire({
+                    title: 'Error!',
+                    text: error.response.data.error,
+                    icon: 'error',
+                    confirmButtonText: 'OK',
+                    timer: 10000,
+                    timerProgressBar: true
+                });
+            }
+        });
+    }
+    })
+        .catch(function (error) {
+            console.error('Error fetching RFID:', error);
+            Swal.fire({
+                title: 'Error!',
+                text: 'Error fetching RFID. Please try again.',
+                icon: 'error',
+                confirmButtonText: 'OK',
+                timer: 10000,
+                timerProgressBar: true
+            });
+        });
+    }
+    
+    setInterval(fetchRFID, 2000);
+    
+    // Update attendees_type based on selected event
+    document.getElementById('event_select').addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        const attendeesType = selectedOption.getAttribute('data-attendees');
+        document.getElementById('attendees_type').value = attendeesType ? attendeesType : '';
+    });
+    
+    // Refresh attendance list
+    function refreshAttendanceList() {
+        var eventId = document.getElementById('event_select').value;
+    
+        axios.get("{{ route('attendance.index') }}", {
+            params: { event_id: eventId }
+        })
+        .then(function (response) {
+            document.querySelector('#example tbody').innerHTML = response.data;
+        })
+        .catch(function (error) {
+            console.error('Error refreshing attendance list:', error);
+        });
+    }
+    </script>
+    <style>
+    
+    /* Ensure the student's picture is a square */
+    .student-picture {
+        width: 180px;
+        height: 180px;
+        object-fit: cover;  /* This makes sure the image fills the square without distortion */
+        border-radius: 5px;  /* Slight rounding of corners */
+    }
+    
+    /* Style for individual bordered boxes */
+    .student-info-box {
+        background-color: white;
+        padding: 10px;
+        border: 2px solid lightgray;  /* Separate borders for each section */
+        border-radius: 5px;
+        font-weight: bold;  /* Make the text bold */
+    }
+    
+    /* Add spacing between sections */
+    .mb-3 {
+        margin-bottom: 15px;  /* Adjust the margin for better spacing */
+    }
+    
+    /* Add some additional styling if necessary */
+    .swal-custom-popup {
+        border-radius: 15px;
+        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    
+    
+    .swal-content {
+    text-align: center; /* Center content */
+    }
+    
+    .swal-content img {
+    width: 180px; /* Adjust image size */
+    height: auto; /* Maintain aspect ratio */
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    }
+    
+    
+    </style>        
+    </body>
+    
+    </html>
+    
+    </x-app-layout>
+    
